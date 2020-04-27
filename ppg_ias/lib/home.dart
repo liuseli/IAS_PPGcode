@@ -17,9 +17,9 @@ class HomePageView extends State<HomePage> {
   List<SensorValue> _data = [];
   List<SensorStats> _statdata = [];
   CameraController _controller;
-  double _stdMean = 0;
+  double _std;
   double _alpha = 0.3;
-  int _bpm = 0;
+  double _hr;
   int _k = pow(2,2);
 
     _toggle() {
@@ -29,7 +29,7 @@ class HomePageView extends State<HomePage> {
         _processing = false;
       });
       _updateBPM();
-      _updateStdmean();
+      /*_updateStdmean();*/
     });
   }
 
@@ -69,15 +69,19 @@ class HomePageView extends State<HomePage> {
 
    _updateBPM() async {
     List<SensorValue> _values;
+    List<SensorStats> _devs;
     double _avg;
     int _n;
     double _m;
     double _threshold;
     double _bpm;
+    double _stdMean;
     int _counter;
     int _previous;
     while (_toggled) {
       _values = List.from(_data);
+      _devs = List.from(_statdata);
+      _stdMean = 0;
       _avg = 0;
       _n = _values.length;
       _m = 0;
@@ -100,32 +104,68 @@ class HomePageView extends State<HomePage> {
           _previous = _values[i].time.millisecondsSinceEpoch;
         }
       }
+      _devs.forEach((SensorStats std) {
+        _stdMean += std.redstd / _n;
+      });
       if (_counter > 0) {
         _bpm = _bpm / _counter;
         setState(() {
-          _bpm = (1 - _alpha) * _bpm + _alpha * _bpm;
+          _hr = ((1 - _alpha) * _bpm + _alpha * _bpm);
+        });
+        setState((){
+          _std = 110 - 5*_stdMean;
         });
       }
-      await Future.delayed(Duration(milliseconds: (1000 * 50 / 30).round()));
+      await Future.delayed(Duration(milliseconds: (2000 * 50 / 30).round()));
     }
   }
-
+  
+  /*_updateStdmean() async {
+    List<SensorStats> _devs;
+    int _n;
+    double _m;
+    while (_toggled) {
+      _devs = List.from(_statdata);
+      _n = _devs.length;
+      _m = 0;
+      double _stdMean = 0;
+      _devs.forEach((SensorStats std) {
+        setState(() {
+        _std = std.std;
+        });
+        _stdMean += std.std / _n;
+        if (std.std > _m) _m = std.std;
+      });
+      await Future.delayed(Duration(milliseconds: (1000 * 50 / 30).round()));
+    }
+  }*/
 
   _scanImage(CameraImage image) {
-    int _n = image.planes.first.bytes.length;
-    double _avg =
-        image.planes.first.bytes.reduce((value, element) => value + element) / _n;
-    double _std = 0;
-    image.planes.first.bytes.forEach((value) => 
-        ((_std + pow((value - _avg),2))/_n));
-    _std = sqrt(_std);
+    int _nred = image.planes.first.bytes.length;
+    double _avgred =
+        image.planes.first.bytes.reduce((value, element) => value + element) / _nred;
+    double _stdred = 0;
+    _stdred = image.planes.first.bytes.fold(0,(value, element) => value + sqrt(pow((element-_avgred),2) / _nred));
+    
+    int _ngreen = image.planes[1].bytes.length;
+    double _avggreen =
+        image.planes[1].bytes.reduce((value, element) => value + element) / _ngreen;
+    double _stdgreen = 0;
+    _stdgreen = image.planes[1].bytes.fold(0,(value, element) => value + sqrt(pow((element-_avggreen),2) / _ngreen));
+    
+    double _spo2data = (_stdred/_avgred)/(_stdgreen/_avggreen)*100;
 
     if (_data.length >= 50) {
       _data.removeAt(0);
     }
+
+    if (_statdata.length >= 500) {
+      _statdata.removeAt(0);
+    }
+
     setState(() {
-      _data.add(SensorValue(DateTime.now(), _avg));
-      _statdata.add(SensorStats(DateTime.now(), _std));
+      _data.add(SensorValue(DateTime.now(), _spo2data));
+      _statdata.add(SensorStats(DateTime.now(), (((_stdred/_avgred)/(_stdgreen/_avggreen))), _avgred, _stdgreen, _avggreen));
     });
     Future.delayed(Duration(milliseconds: 1000 ~/ 30)).then((onValue) {
       setState(() {
@@ -134,25 +174,7 @@ class HomePageView extends State<HomePage> {
     });
   }
 
-  _updateStdmean() async {
-    List<SensorStats> _devs;
-    int _n;
-    double _m;
-    while (_toggled) {
-      _devs = List.from(_statdata);
-      _n = _devs.length;
-      _m = 0;
-      _stdMean = 0;
-      _devs.forEach((SensorStats std) {
-        _stdMean += std.std / _n;
-        if (std.std > _m) _m = std.std;
-      });
-      setState(() {
-        _stdMean = _stdMean;
-      });
-      await Future.delayed(Duration(milliseconds: (1000 * 50 / 30).round()));
-    }
-  }
+
 
   @override
   void dispose() {
@@ -177,7 +199,7 @@ class HomePageView extends State<HomePage> {
                           child: Container(
                             color: Colors.red,
                             child: Center(
-                              child: Text(List.from(_statdata) == null ? _k.toString() : _stdMean.round().toString()),
+                              child: Text(List.from(_statdata) == null ? _k.toString() : _std.toString()),
                             ),
                           ),
                         ),
@@ -185,7 +207,7 @@ class HomePageView extends State<HomePage> {
                           child: Container(
                             color: Colors.red,
                             child: Center(
-                              child: Text((_bpm < 0 ? _bpm.round().toString() : "--"),
+                              child: Text(_hr == null ? '--':_hr.toString(),
                               style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
                               ),
                             ),

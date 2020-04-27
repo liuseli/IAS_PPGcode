@@ -37,6 +37,9 @@ class SensorValue {
 
 class SensorStats {
   final DateTime statTime;
-  final double std;
-  SensorStats(this.statTime, this.std);
+  final double redstd;
+  final double redmean;
+  final double greenstd;
+  final double greenmean;
+  SensorStats(this.statTime, this.redstd, this.redmean, this.greenstd, this.greenmean);
 }
