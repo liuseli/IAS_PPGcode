@@ -20,6 +20,7 @@ class HomePageView extends State<HomePage> {
   double _std;
   double _alpha = 0.3;
   double _hr;
+  int _hrvar;
   int _k = pow(2,2);
 
     _toggle() {
@@ -78,6 +79,7 @@ class HomePageView extends State<HomePage> {
     double _stdMean;
     int _counter;
     int _previous;
+    int _hrv;
     while (_toggled) {
       _values = List.from(_data);
       _devs = List.from(_statdata);
@@ -93,6 +95,7 @@ class HomePageView extends State<HomePage> {
       _bpm = 0;
       _counter = 0;
       _previous = 0;
+      _hrv = 0;
       for (int i = 1; i < _n; i++) {
         if (_values[i - 1].value < _threshold &&
             _values[i].value > _threshold) {
@@ -100,6 +103,7 @@ class HomePageView extends State<HomePage> {
             _counter++;
             _bpm +=
                 60000 / (_values[i].time.millisecondsSinceEpoch - _previous);
+            _hrv = _values[i].time.millisecondsSinceEpoch - _previous;
           }
           _previous = _values[i].time.millisecondsSinceEpoch;
         }
@@ -115,30 +119,14 @@ class HomePageView extends State<HomePage> {
         setState((){
           _std = 110 - 5*_stdMean;
         });
+        setState((){
+          _hrvar = _hrv;
+        });
       }
-      await Future.delayed(Duration(milliseconds: (2000 * 50 / 30).round()));
+      await Future.delayed(Duration(milliseconds: (1000 * 50 / 30).round()));
     }
   }
   
-  /*_updateStdmean() async {
-    List<SensorStats> _devs;
-    int _n;
-    double _m;
-    while (_toggled) {
-      _devs = List.from(_statdata);
-      _n = _devs.length;
-      _m = 0;
-      double _stdMean = 0;
-      _devs.forEach((SensorStats std) {
-        setState(() {
-        _std = std.std;
-        });
-        _stdMean += std.std / _n;
-        if (std.std > _m) _m = std.std;
-      });
-      await Future.delayed(Duration(milliseconds: (1000 * 50 / 30).round()));
-    }
-  }*/
 
   _scanImage(CameraImage image) {
     int _nred = image.planes.first.bytes.length;
@@ -157,11 +145,9 @@ class HomePageView extends State<HomePage> {
 
     if (_data.length >= 50) {
       _data.removeAt(0);
-    }
-
-    if (_statdata.length >= 500) {
       _statdata.removeAt(0);
     }
+
 
     setState(() {
       _data.add(SensorValue(DateTime.now(), _spo2data));
@@ -199,7 +185,9 @@ class HomePageView extends State<HomePage> {
                           child: Container(
                             color: Colors.red,
                             child: Center(
-                              child: Text(List.from(_statdata) == null ? _k.toString() : _std.toString()),
+                              child: Text(List.from(_statdata) == null ? _k.toString() : _std.round().toString(),
+                              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                              ),
                             ),
                           ),
                         ),
@@ -207,7 +195,7 @@ class HomePageView extends State<HomePage> {
                           child: Container(
                             color: Colors.red,
                             child: Center(
-                              child: Text(_hr == null ? '--':_hr.toString(),
+                              child: Text(_hr == null ? '--':_hr.round().toString(),
                               style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
                               ),
                             ),
@@ -223,7 +211,9 @@ class HomePageView extends State<HomePage> {
                           child: Container(
                             color: Colors.white,
                             child: Center(
-                              child: Text('Resp rate')
+                              child: Text(_hrvar == null ? '--':_hrvar.toString(),
+                              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                              ),
                             ),
                           ),
                         ),
