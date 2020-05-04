@@ -17,11 +17,11 @@ class HomePageView extends State<HomePage> {
   List<SensorValue> _data = [];
   List<SensorStats> _statdata = [];
   CameraController _controller;
-  double _std;
+  double _std=0;
   double _alpha = 0.3;
-  double _hr;
+  double _hr = 0;
   int _hrvar;
-  int _k = pow(2,2);
+  List<SensorValue> _hrvlist = [];
 
     _toggle() {
       _initController().then((onValue) {
@@ -111,6 +111,13 @@ class HomePageView extends State<HomePage> {
       _devs.forEach((SensorStats std) {
         _stdMean += std.redstd / _n;
       });
+      setState((){
+          _hrvar = _hrv;
+          _hrvlist.add(SensorValue(DateTime.now(), _hrv.toDouble()));
+        });
+      if (_hrvlist.length > 20) {
+        _hrvlist.removeAt(0);
+      }
       if (_counter > 0) {
         _bpm = _bpm / _counter;
         setState(() {
@@ -118,9 +125,6 @@ class HomePageView extends State<HomePage> {
         });
         setState((){
           _std = 110 - 5*_stdMean;
-        });
-        setState((){
-          _hrvar = _hrv;
         });
       }
       await Future.delayed(Duration(milliseconds: (1000 * 50 / 30).round()));
@@ -185,7 +189,7 @@ class HomePageView extends State<HomePage> {
                           child: Container(
                             color: Colors.red,
                             child: Center(
-                              child: Text(List.from(_statdata) == null ? _k.toString() : _std.round().toString(),
+                              child: Text(List.from(_statdata).length == 0 ? '--' : _std.round().toString(),
                               style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
                               ),
                             ),
@@ -195,7 +199,7 @@ class HomePageView extends State<HomePage> {
                           child: Container(
                             color: Colors.red,
                             child: Center(
-                              child: Text(_hr == null ? '--':_hr.round().toString(),
+                              child: Text(_hr == null ? '--' : _hr.round().toString(),
                               style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
                               ),
                             ),
@@ -233,14 +237,32 @@ class HomePageView extends State<HomePage> {
             ),
 
             Expanded(
-              child: Container(
-                margin: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                    borderRadius: BorderRadius.all(
-                      Radius.circular(18),
-                    ),
-                    color: Colors.black),
-                child: Chart(_data),
+              child: Column(
+                children: <Widget>[
+                  Expanded(
+                    child: Container(
+                      margin: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                          borderRadius: BorderRadius.all(
+                            Radius.circular(18),
+                          ),
+                          color: Colors.black),
+                      child: Chart(_data),
+                  ),
+                ),
+                
+                Expanded(
+                    child: Container(
+                      margin: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                          borderRadius: BorderRadius.all(
+                            Radius.circular(18),
+                          ),
+                          color: Colors.black),
+                      child: Chart(_hrvlist),
+                  ),
+                ),
+              ],
               ),
             ),
 
