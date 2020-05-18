@@ -39,7 +39,7 @@ class SensorStats {
   final DateTime statTime;
   final double redstd;
   final double redmean;
-  final double greenstd;
-  final double greenmean;
-  SensorStats(this.statTime, this.redstd, this.redmean, this.greenstd, this.greenmean);
+  final double bluestd;
+  final double bluemean;
+  SensorStats(this.statTime, this.redstd, this.redmean, this.bluestd, this.bluemean);
 }

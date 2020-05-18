@@ -3,6 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:wakelock/wakelock.dart';
 import 'dart:math';
 import 'waveform.dart';
+import 'package:ml_linalg/linalg.dart';
+import 'package:ml_linalg/vector.dart';
+
+
+import 'package:image/image.dart' as imglib;
+
 
 class HomePage extends StatefulWidget {
   @override
@@ -73,17 +79,21 @@ class HomePageView extends State<HomePage> {
     List<SensorStats> _devs;
     double _avg;
     int _n;
+    int _nstat;
     double _m;
     double _threshold;
     double _bpm;
-    double _stdMean;
+    double _redSigMean;
+    double _blueSigMean;
+    double _redSigStd;
+    double _blueSigStd;
     int _counter;
     int _previous;
     int _hrv;
+    double _spo2val;
     while (_toggled) {
       _values = List.from(_data);
       _devs = List.from(_statdata);
-      _stdMean = 0;
       _avg = 0;
       _n = _values.length;
       _m = 0;
@@ -108,9 +118,22 @@ class HomePageView extends State<HomePage> {
           _previous = _values[i].time.millisecondsSinceEpoch;
         }
       }
-      _devs.forEach((SensorStats std) {
-        _stdMean += std.redstd / _n;
+      _spo2val = 0;
+      _redSigMean = 0;
+      _blueSigMean = 0;
+      _redSigStd = 0;
+      _blueSigStd = 0;
+      _nstat = _devs.length;
+      _devs.forEach((SensorStats stat) {
+        _redSigMean += stat.redmean / _nstat;
+        _blueSigMean += stat.bluemean / _nstat;
       });
+      _devs.forEach((SensorStats stat) {
+        _redSigStd += sqrt(pow((stat.redmean -_redSigMean),2) /_nstat);
+        _blueSigStd += sqrt(pow((stat.bluemean -_blueSigMean),2) /_nstat);
+      });
+
+      _spo2val = _redSigStd/_redSigMean/_blueSigStd/_blueSigMean;
       setState((){
           _hrvar = _hrv;
           _hrvlist.add(SensorValue(DateTime.now(), _hrv.toDouble()));
@@ -118,44 +141,80 @@ class HomePageView extends State<HomePage> {
       if (_hrvlist.length > 20) {
         _hrvlist.removeAt(0);
       }
+
       if (_counter > 0) {
         _bpm = _bpm / _counter;
         setState(() {
           _hr = ((1 - _alpha) * _bpm + _alpha * _bpm);
         });
         setState((){
-          _std = 110 - 5*_stdMean;
+          _std = 100-100*_spo2val;
         });
       }
       await Future.delayed(Duration(milliseconds: (1000 * 50 / 30).round()));
     }
   }
+
   
 
   _scanImage(CameraImage image) {
-    int _nred = image.planes.first.bytes.length;
+
+        final int width = image.width;
+        final int height = image.height;
+        final int uvRowStride = image.planes[1].bytesPerRow;
+        final int uvPixelStride = image.planes[1].bytesPerPixel;
+        List<int> _redCh = [];
+        List<int> _greenCh = [];
+        List<int> _blueCh = [];
+
+        
+        // imgLib -> Image package from https://pub.dartlang.org/packages/image
+        var img = imglib.Image(width, height); // Create Image buffer
+
+        // Fill image buffer with plane[0] from YUV420_888
+        for(int x=0; x < width; x++) {
+          for(int y=0; y < height; y++) {
+            final int uvIndex = uvPixelStride * (x/2).floor() + uvRowStride*(y/2).floor();
+            final int index = y * width + x;
+
+            final yp = image.planes[0].bytes[index];
+            final up = image.planes[1].bytes[uvIndex];
+            final vp = image.planes[2].bytes[uvIndex];
+            // Calculate pixel color
+            int r = (yp + (vp-128) * 1.370705).round().clamp(0, 255);
+            int g = (yp - (up-128) * 0.337633 - (vp-128) * 0.698001).round().clamp(0, 255);
+            int b = (yp + (up-128) * 1.732446).round().clamp(0, 255);
+            _redCh.add(255-r);
+            _greenCh.add(255-g);
+            _blueCh.add(255-b);
+          }
+        }
+
+    int _nred = _redCh.length;
+
     double _avgred =
-        image.planes.first.bytes.reduce((value, element) => value + element) / _nred;
+        _redCh.reduce((value, element) => value + element) / _nred;
     double _stdred = 0;
-    _stdred = image.planes.first.bytes.fold(0,(value, element) => value + sqrt(pow((element-_avgred),2) / _nred));
+    _stdred = _redCh.fold(0,(value, element) => value + sqrt(pow((element-_avgred),2) / _nred));
+    int _nblue = _blueCh.length;
+    double _avgblue =
+        _blueCh.reduce((value, element) => value + element) / _nblue;
+    double _stdblue = 0;
+    _stdblue = _blueCh.fold(0,(value, element) => value + sqrt(pow((element-_avgblue),2) / _nblue));
     
-    int _ngreen = image.planes[1].bytes.length;
-    double _avggreen =
-        image.planes[1].bytes.reduce((value, element) => value + element) / _ngreen;
-    double _stdgreen = 0;
-    _stdgreen = image.planes[1].bytes.fold(0,(value, element) => value + sqrt(pow((element-_avggreen),2) / _ngreen));
-    
-    double _spo2data = (_stdred/_avgred)/(_stdgreen/_avggreen)*100;
+    double _spo2data = _avgred;
 
     if (_data.length >= 50) {
       _data.removeAt(0);
+    }
+
+    if(_statdata.length >= 100){
       _statdata.removeAt(0);
     }
 
-
     setState(() {
       _data.add(SensorValue(DateTime.now(), _spo2data));
-      _statdata.add(SensorStats(DateTime.now(), (((_stdred/_avgred)/(_stdgreen/_avggreen))), _avgred, _stdgreen, _avggreen));
+      _statdata.add(SensorStats(DateTime.now(), _stdred, _avgred, _stdblue, _avgblue));
     });
     Future.delayed(Duration(milliseconds: 1000 ~/ 30)).then((onValue) {
       setState(() {
@@ -189,7 +248,7 @@ class HomePageView extends State<HomePage> {
                           child: Container(
                             color: Colors.red,
                             child: Center(
-                              child: Text(List.from(_statdata).length == 0 ? '--' : _std.round().toString(),
+                              child: Text(List.from(_statdata).length == 0 ? '--' : _std.toString(),
                               style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
                               ),
                             ),

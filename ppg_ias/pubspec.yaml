@@ -18,6 +18,10 @@ dependencies:
       url: https://github.com/Renesanse/plugins.git
       path: packages/camera
       ref: flash_light
+  ml_linalg: ^12.7.1
+  image: ^2.1.4
+  tflite: ^1.0.5
+
 
 dev_dependencies:
   flutter_test:
@@ -31,3 +35,4 @@ flutter_icons:
 
 flutter:
   uses-material-design: true
+
