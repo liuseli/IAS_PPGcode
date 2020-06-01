@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:wakelock/wakelock.dart';
 import 'dart:math';
 import 'waveform.dart';
-import 'package:ml_linalg/linalg.dart';
-import 'package:ml_linalg/vector.dart';
-
-
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 import 'package:image/image.dart' as imglib;
+import 'package:csv/csv.dart';
+
 
 
 class HomePage extends StatefulWidget {
@@ -22,12 +22,16 @@ class HomePageView extends State<HomePage> {
   bool _processing = false;
   List<SensorValue> _data = [];
   List<SensorStats> _statdata = [];
+  List<List<dynamic>> _reddata = [];
+  List<List<dynamic>> _bluedata = [];
   CameraController _controller;
   double _std=0;
   double _alpha = 0.3;
   double _hr = 0;
   int _hrvar;
   List<SensorValue> _hrvlist = [];
+  int _resprat;
+  List<SensorValue> _resprlist = [];
 
     _toggle() {
       _initController().then((onValue) {
@@ -42,6 +46,8 @@ class HomePageView extends State<HomePage> {
 
   _untoggle() {
     _disposeController();
+    //_write(_reddata, 'red');
+    //_write(_bluedata, 'blue');
     setState(() {
       _toggled = false;
       _processing = false;
@@ -101,6 +107,8 @@ class HomePageView extends State<HomePage> {
         _avg += value.value / _n;
         if (value.value > _m) _m = value.value;
       });
+
+
       _threshold = (_m + _avg) / 2;
       _bpm = 0;
       _counter = 0;
@@ -118,6 +126,9 @@ class HomePageView extends State<HomePage> {
           _previous = _values[i].time.millisecondsSinceEpoch;
         }
       }
+
+      
+
       _spo2val = 0;
       _redSigMean = 0;
       _blueSigMean = 0;
@@ -132,15 +143,17 @@ class HomePageView extends State<HomePage> {
         _redSigStd += sqrt(pow((stat.redmean -_redSigMean),2) /_nstat);
         _blueSigStd += sqrt(pow((stat.bluemean -_blueSigMean),2) /_nstat);
       });
-
       _spo2val = _redSigStd/_redSigMean/_blueSigStd/_blueSigMean;
+
+
       setState((){
           _hrvar = _hrv;
-          _hrvlist.add(SensorValue(DateTime.now(), _hrv.toDouble()));
+          _hrvlist.add(SensorValue(DateTime.now(), pow(_hrv,2).toDouble()));
         });
       if (_hrvlist.length > 20) {
         _hrvlist.removeAt(0);
-      }
+        }
+      
 
       if (_counter > 0) {
         _bpm = _bpm / _counter;
@@ -189,40 +202,49 @@ class HomePageView extends State<HomePage> {
             _blueCh.add(255-b);
           }
         }
+      
+      _reddata.add(_redCh);
+      _bluedata.add(_blueCh);
 
-    int _nred = _redCh.length;
+      int _nred = _redCh.length;
 
-    double _avgred =
-        _redCh.reduce((value, element) => value + element) / _nred;
-    double _stdred = 0;
-    _stdred = _redCh.fold(0,(value, element) => value + sqrt(pow((element-_avgred),2) / _nred));
-    int _nblue = _blueCh.length;
-    double _avgblue =
-        _blueCh.reduce((value, element) => value + element) / _nblue;
-    double _stdblue = 0;
-    _stdblue = _blueCh.fold(0,(value, element) => value + sqrt(pow((element-_avgblue),2) / _nblue));
-    
-    double _spo2data = _avgred;
+      double _avgred =
+          _redCh.reduce((value, element) => value + element) / _nred;
+      double _stdred = 0;
+      _stdred = _redCh.fold(0,(value, element) => value + sqrt(pow((element-_avgred),2) / _nred));
+      int _nblue = _blueCh.length;
+      double _avgblue =
+          _blueCh.reduce((value, element) => value + element) / _nblue;
+      double _stdblue = 0;
+      _stdblue = _blueCh.fold(0,(value, element) => value + sqrt(pow((element-_avgblue),2) / _nblue));
+      
+      double _spo2data = _avgred;
 
-    if (_data.length >= 50) {
-      _data.removeAt(0);
-    }
+      if (_data.length >= 50) {
+        _data.removeAt(0);
+      }
 
-    if(_statdata.length >= 100){
-      _statdata.removeAt(0);
-    }
+      if(_statdata.length >= 50){
+        _statdata.removeAt(0);
+      }
 
-    setState(() {
-      _data.add(SensorValue(DateTime.now(), _spo2data));
-      _statdata.add(SensorStats(DateTime.now(), _stdred, _avgred, _stdblue, _avgblue));
-    });
-    Future.delayed(Duration(milliseconds: 1000 ~/ 30)).then((onValue) {
       setState(() {
-        _processing = false;
+        _data.add(SensorValue(DateTime.now(), _spo2data));
+        _statdata.add(SensorStats(DateTime.now(), _stdred, _avgred, _stdblue, _avgblue));
       });
-    });
-  }
+      Future.delayed(Duration(milliseconds: 1000 ~/ 30)).then((onValue) {
+        setState(() {
+          _processing = false;
+        });
+      });
+    }
 
+  _write(List text, String filename) async {
+    String csv = const ListToCsvConverter().convert(text);
+    final Directory directory = await getApplicationDocumentsDirectory();
+    File file = File('${directory.path}/$filename.txt');
+    await file.writeAsString(csv);
+  }
 
 
   @override
@@ -245,54 +267,120 @@ class HomePageView extends State<HomePage> {
                     child: Row(
                       children: <Widget>[
                         Expanded(
-                          child: Container(
-                            color: Colors.red,
-                            child: Center(
-                              child: Text(List.from(_statdata).length == 0 ? '--' : _std.toString(),
-                              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                          child: Column(
+                            children: <Widget>[
+                              Expanded(
+                                child: Container(
+                                  color: Colors.red,
+                                  child: Center(
+                                    child: Text('SpO2',
+                                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
+                              Expanded(
+                                child: Container(
+                                  color: Colors.red,
+                                  child: Center(
+                                    child: Text(List.from(_statdata).length == 0 ? '--' : _std.floor().toString(),
+                                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         Expanded(
-                          child: Container(
-                            color: Colors.red,
-                            child: Center(
-                              child: Text(_hr == null ? '--' : _hr.round().toString(),
-                              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                          child: Column(
+                            children: <Widget>[
+                              Expanded(
+                                child: Container(
+                                  color: Colors.red,
+                                  child: Center(
+                                    child: Text('HR',
+                                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
+                              Expanded(
+                                child: Container(
+                                  color: Colors.red,
+                                  child: Center(
+                                  child: Text(_hr == null ? '--' : _hr.round().toString(),
+                                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ]
+                          )
                         ),
-                      ],
-                    ),
+                      ]
+                    )
                   ),
                   Expanded(
                     child: Row(
                       children: <Widget>[
                         Expanded(
-                          child: Container(
-                            color: Colors.white,
-                            child: Center(
-                              child: Text(_hrvar == null ? '--':_hrvar.toString(),
-                              style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                          child: Column(
+                            children: <Widget>[
+                              Expanded(
+                                child: Container(
+                                  color: Colors.white,
+                                  child: Center(
+                                    child: Text('HRV',
+                                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
+                              Expanded(
+                                child: Container(
+                                  color: Colors.white,
+                                  child: Center(
+                                    child: Text(_hrvar == null ? '--':_hrvar.toString(),
+                                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ]
+                          )
                         ),
                         Expanded(
-                          child: Container(
-                            color: Colors.white,
-                            child: Center(
-                              child: Text('Emotion')
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+                          child: Column(
+                            children: <Widget>[
+                              Expanded(
+                                child: Container(
+                                  color: Colors.white,
+                                  child: Center(
+                                    child: Text('Resp rate',
+                                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Container(
+                                  color: Colors.white,
+                                  child: Center(
+                                    child: Text(_hrvar == null ? '--': (13).toString(),
+                                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ]
+                          )
+                        )
+                      ]
+                    )
+                  )
+                ]
+              )
             ),
 
             Expanded(
@@ -310,20 +398,20 @@ class HomePageView extends State<HomePage> {
                   ),
                 ),
                 
-                Expanded(
-                    child: Container(
-                      margin: EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                          borderRadius: BorderRadius.all(
-                            Radius.circular(18),
-                          ),
-                          color: Colors.black),
-                      child: Chart(_hrvlist),
-                  ),
+              Expanded(
+                  child: Container(
+                    margin: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                        borderRadius: BorderRadius.all(
+                          Radius.circular(18),
+                        ),
+                        color: Colors.black),
+                    child: Chart(_hrvlist),
                 ),
-              ],
               ),
+            ],
             ),
+          ),
 
             Expanded(
               child: Row(
